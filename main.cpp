@@ -2,9 +2,23 @@
 #include <cstring>
 #include <fstream>
 #include "hash_functions.h"
-//#include "Mark.txt"
 
-//hask keys array stores 64 hexadecimal values
+//Initialize hash values: (first 32 bits of the fractional parts of the square roots of the first 8 primes 2..19) in hexadecimal
+void hash_functions::stateregister()
+{
+    s_r[0] = 0x6a09e667;
+    s_r[1] = 0xbb67ae85;
+    s_r[2] = 0x3c6ef372;
+    s_r[3] = 0xa54ff53a;
+    s_r[4] = 0x510e527f;
+    s_r[5] = 0x9b05688c;
+    s_r[6] = 0x1f83d9ab;
+    s_r[7] = 0x5be0cd19;
+    s_r_len = 0;
+    s_r_totlen = 0;
+}
+
+//Initialize array of round constants: (first 32 bits of the fractional parts of the cube roots of the first 64 primes 2..311):
 const unsigned int hash_functions::hash_keys[64] =
             {0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
              0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -23,15 +37,16 @@ const unsigned int hash_functions::hash_keys[64] =
              0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
              0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-//uses the 8 hash registers and combines with message schedule and original message to make a digest 
+//Padding (pre-processing)
 void hash_functions::compress(const unsigned char *message, unsigned int block_nb)
 {
-    register_32 w[64];
-    register_32 buffer[8];
-    register_32 t1, t2;
-    const unsigned char *sub_block;
+    register_32 w[64]; //creates 64, 32 bits
+    register_32 buffer[8]; //creates 8 hash registers
+    register_32 t1, t2; //registers to switch and overlay bits during compression
+    const unsigned char *sub_block; //message block or section
     int m;
     int n;
+    //These rotation functions use the existing data inside the block to fuse them and expand the message schedule with many new bits.
     for (m = 0; m < (int) block_nb; m++) {
         sub_block = message + (m << 6);
         for (n = 0; n < 16; n++) {
@@ -43,6 +58,7 @@ void hash_functions::compress(const unsigned char *message, unsigned int block_n
         for (n = 0; n < 8; n++) {
             buffer[n] = s_r[n];
         }
+        //Every bit gets switched together and overlaid on top of each other to create the final message digest.
         for (n = 0; n < 64; n++) {
             t1 = buffer[7] + SHAF_2(buffer[4]) + CHOICE_OF(buffer[4], buffer[5], buffer[6])
                 + hash_keys[n] + w[n];
@@ -56,30 +72,18 @@ void hash_functions::compress(const unsigned char *message, unsigned int block_n
             buffer[1] = buffer[0];
             buffer[0] = t1 + t2;
         }
+        //compression process goes on for all the 64 words, finally leaving an updated state register
         for (n = 0; n < 8; n++) {
             s_r[n] += buffer[n];
         }
     }
 }
 
-void hash_functions::stateregister()
-{
-    s_r[0] = 0x6a09e667;
-    s_r[1] = 0xbb67ae85;
-    s_r[2] = 0x3c6ef372;
-    s_r[3] = 0xa54ff53a;
-    s_r[4] = 0x510e527f;
-    s_r[5] = 0x9b05688c;
-    s_r[6] = 0x1f83d9ab;
-    s_r[7] = 0x5be0cd19;
-    s_r_len = 0;
-    s_r_totlen = 0;
-}
-
+// add the compressed chunk to the current hash value:
 void hash_functions::adjust_digest(const unsigned char *text, unsigned int text_len)
 {
     unsigned int block_nb;
-    unsigned int new_len, rem_len, tmp_len;
+    unsigned int new_len, rem_len, tmp_len; //new, remaining, temporary
     const unsigned char *shifted_message;
     tmp_len = BLOCK_SIZE_of_256 - s_r_len;
     rem_len = text_len < tmp_len ? text_len : tmp_len;
@@ -99,6 +103,7 @@ void hash_functions::adjust_digest(const unsigned char *text, unsigned int text_
     s_r_totlen += (block_nb + 1) << 6;
 }
 
+//Produce the final hash value (big-endian):
 void hash_functions::digest_final(unsigned char *digest)
 {
     unsigned int block_nb;
@@ -118,6 +123,7 @@ void hash_functions::digest_final(unsigned char *digest)
     }
 }
 
+//official hash function 
 std::string sha256(std::string input)
 {
     unsigned char digest[hash_functions::PADD_SIZE];
